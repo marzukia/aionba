@@ -1,0 +1,12 @@
+[flake8]
+select = B,C,E,F,W
+
+# E133:Closing bracket is missing indentation
+# E501:Line too long (82 > 79 characters)
+# W503:Line break occurred before a binary operator
+ignore = E133,E501,W503
+
+max-line-length = 120
+max-complexity = 12
+
+exclude = .git,__pycache__,migrations,env
