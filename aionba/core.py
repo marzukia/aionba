@@ -8,7 +8,7 @@ from datetime import datetime
 from settings import SQLITE_PATH
 
 
-async def check_existing_query(db, url):
+async def check_existing_query(db, url):cc
     """ Checks local SQLite3 DB to see if requested URL is stored.
         If a table isn't found, one is created.
         TODO: Add a timer setting when re-cache needs to occur.
