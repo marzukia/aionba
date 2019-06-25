@@ -1,0 +1,79 @@
+import asyncio
+import aiohttp
+
+import random
+import re
+from lxml import html
+
+
+async def fetch_proxies():
+    """ Fetch new proxy from:
+        https://api.getproxylist.com/proxy
+    """
+    headers = {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept_encdoing": "gzip, deflate, br",
+        "user_agent": "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:67.0) Gecko/20100101 Firefox/67.0"
+    }
+    async with aiohttp.ClientSession(headers=headers) as session:
+        response = await session.get("https://free-proxy-list.net/")
+        response = await response.text()
+        tree = html.fromstring(response)
+        proxies = []
+        for row in tree.xpath("//table[1]/tbody[1]/tr"):
+            regex = "<[^>]*>|'|b"
+            ip = html.tostring(row.xpath('td[1]')[0])
+            port = html.tostring(row.xpath('td[2]')[0])
+            proxy = re.sub(regex, '', f"{ip}:{port}")
+            proxies.append(proxy)
+        return proxies
+
+
+async def ping_proxy(proxy):
+    """ Function to ping the proxy and return ms in an integer. """
+    proxy = proxy.split(":")[0]
+    regex = "(time=\d+.ms+)"
+    cmd = f"ping -c 1 {proxy}"
+    ping = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    stdout, stderr = await ping.communicate()
+    assert stdout is not None, "Ping command failed."
+    try:
+        ping = re.search(regex, str(stdout)).group(1)
+        ping = int(ping.split('=')[-1][:-3])
+        return ping
+    except AttributeError:
+        return 999
+
+
+async def test_proxy(proxy, session, threshold):
+    """ Check if proxy is connectable.
+    """
+    proxy = 'http://' + proxy
+    timeout = aiohttp.ClientTimeout(total=threshold)
+    try:
+        response = await session.get('http://yahoo.com', proxy=proxy, timeout=timeout)
+    except (asyncio.TimeoutError, aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ServerDisconnectedError):
+        return None
+    return response
+
+
+async def decide_proxy(proxy, session, threshold, arr):
+    ping_result = await ping_proxy(proxy)
+    if int(ping_result) < 500:
+        test_result = await test_proxy(proxy, session, threshold, )
+        if test_result:
+            arr.append(proxy)
+
+
+async def check_proxies(proxies, threshold):
+    """ Clean proxy list, checks and removes slow/invalid proxies.
+    """
+    async with aiohttp.ClientSession() as session:
+        arr = []
+        await asyncio.gather(*[decide_proxy(i, session, threshold, arr) for i in proxies])
+        return arr
+
+
+def fetch_proxy(proxies):
+    """ Fetch a random proxy """
+    return proxies[random.randint(0, len(proxies))]

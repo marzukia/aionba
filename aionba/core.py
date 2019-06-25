@@ -4,7 +4,8 @@ import aiosqlite
 import json
 from datetime import datetime
 
-from .settings import SQLITE_PATH
+from .settings import *
+from .proxy import *
 
 
 async def check_existing_query(db, url):
@@ -24,9 +25,9 @@ async def check_existing_query(db, url):
 async def store_response(db, url, response):
     """ Store response in SQLite3 DB. """
     payload = {
-        'query': url,
-        'date': datetime.now(),
-        'response': response
+        "query": url,
+        "date": datetime.now(),
+        "response": response
     }
     payload = ",".join(f"'{i}'" for i in payload.values())
     sql = f"INSERT INTO query_cache(query, date, response) VALUES({payload})"
@@ -34,16 +35,7 @@ async def store_response(db, url, response):
     await db.commit()
 
 
-async def fetch_proxy():
-    """ Fetch new proxy from:
-        https://api.getproxylist.com/proxy
-    """
-    async with aiohttp.ClientSession() as session:
-        proxy = await session.get('https://api.getproxylist.com/proxy')
-        return await proxy.json()
-
-
-async def fetch_url(url):
+async def fetch_url(url, proxies):
     """ Check if URL is cached first via check_existing_query(),
         If none is found, fetch then store response.
         Otherwise, return cached response.
@@ -52,8 +44,8 @@ async def fetch_url(url):
         query = await check_existing_query(db, url)
         if not query:
             async with aiohttp.ClientSession() as session:
-                proxy = await fetch_proxy()
-                response = await session.get(url, proxy=f"http://{proxy['ip']}:{proxy['port']}")
+                proxy = "http://" + fetch_proxy(proxies)
+                response = await session.get(url, proxy=proxy)
                 response = await response.json()
                 await store_response(db, url, json.dumps(response))
                 return response
