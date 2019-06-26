@@ -1,6 +1,8 @@
 import aiohttp
 import aiosqlite
 
+import os
+import sqlite3
 import json
 from datetime import datetime
 
@@ -14,11 +16,7 @@ async def check_existing_query(db, url):
         TODO: Add a timer setting when re-cache needs to occur.
     """
     sql = f"SELECT * FROM query_cache WHERE query = '{url}'"
-    try:
-        cursor = await db.execute(sql)
-    except aiosqlite.OperationalError:
-        await db.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
-        return None
+    cursor = await db.execute(sql)
     return await cursor.fetchone()
 
 
@@ -35,22 +33,34 @@ async def store_response(db, url, response):
     await db.commit()
 
 
-async def fetch_url(url, proxies):
+async def get_url(url, session, arr, db, proxy=None):
+    query = await check_existing_query(db, url)
+    if not query:
+        response = await session.get(url, proxy=proxy)
+        response = await response.json()
+        await store_response(db, url, json.dumps(response))
+        return response
+    else:
+        return json.loads(query[-1])
+
+
+async def fetch_urls(urls: [], proxies=None):
     """ Check if URL is cached first via check_existing_query(),
         If none is found, fetch then store response.
         Otherwise, return cached response.
     """
+    if not os.path.isfile(SQLITE_PATH):
+        cur = sqlite3.connect(SQLITE_PATH).cursor()
+        cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        query = await check_existing_query(db, url)
-        if not query:
-            async with aiohttp.ClientSession() as session:
-                proxy = "http://" + fetch_proxy(proxies)
-                response = await session.get(url, proxy=proxy)
-                response = await response.json()
-                await store_response(db, url, json.dumps(response))
-                return response
-        else:
-            return json.loads(query[-1])
+        async with aiohttp.ClientSession() as session:
+            proxy = None
+            arr = []
+            if proxy:
+                response = await asyncio.gather(*[get_url(i, session, arr, db, proxy=fetch_proxy(proxies)) for i in urls])
+            else:
+                response = await asyncio.gather(*[get_url(i, session, arr, db) for i in urls])
+            return response
 
 
 def construct_url(endpoint):

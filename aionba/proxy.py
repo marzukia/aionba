@@ -101,4 +101,4 @@ async def check_proxies(proxies, threshold):
 
 def fetch_proxy(proxies):
     """ Fetch a random proxy """
-    return proxies[random.randint(0, len(proxies))]
+    return "http://" + proxies[random.randint(0, len(proxies) -1)]
