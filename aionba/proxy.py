@@ -3,6 +3,8 @@ import aiohttp
 
 import random
 import re
+import ssl
+import contextlib
 from lxml import html
 
 
@@ -45,14 +47,37 @@ async def ping_proxy(proxy):
         return 999
 
 
+@contextlib.contextmanager
+def suppress_ssl_exception_report():
+    """ Despite exception being handled, asyncio event loop prints traceback.
+        Function mutes it for duration of proxy check.
+        Exceptions are expected during this process.
+        https://stackoverflow.com/questions/52012488/ssl-asyncio-traceback-even-when-error-is-handled
+    """
+    loop = asyncio.get_event_loop()
+    old_handler = loop.get_exception_handler()
+    old_handler_fn = lambda _loop, ctx: loop.default_exception_handler(ctx)
+    def ignore_exc(_loop, ctx):
+        exc = ctx.get('exception')
+        if isinstance(exc, ssl.SSLError):
+            return
+        old_handler_fn(loop, ctx)
+    loop.set_exception_handler(ignore_exc)
+    try:
+        yield
+    finally:
+        loop.set_exception_handler(old_handler)
+
+
 async def test_proxy(proxy, session, threshold):
     """ Check if proxy is connectable.
     """
     proxy = 'http://' + proxy
     timeout = aiohttp.ClientTimeout(total=threshold)
     try:
-        response = await session.get('http://yahoo.com', proxy=proxy, timeout=timeout)
-    except (asyncio.TimeoutError, aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ServerDisconnectedError):
+        with suppress_ssl_exception_report():
+            response = await session.get('http://yahoo.com', proxy=proxy, timeout=timeout)
+    except (asyncio.TimeoutError, aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ServerDisconnectedError, aiohttp.ClientOSError):
         return None
     return response
 
