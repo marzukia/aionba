@@ -50,6 +50,9 @@ async def fetch_urls(urls: [], proxies=None):
         Otherwise, return cached response.
     """
     if not os.path.isfile(SQLITE_PATH):
+        """ Check if SQLite3 database exists already.
+            If not, create one and create the relevant table.
+        """
         cur = sqlite3.connect(SQLITE_PATH).cursor()
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
     async with aiosqlite.connect(SQLITE_PATH) as db:
