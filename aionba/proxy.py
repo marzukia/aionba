@@ -77,7 +77,14 @@ async def test_proxy(proxy, session, threshold):
     try:
         with suppress_ssl_exception_report():
             response = await session.get('http://yahoo.com', proxy=proxy, timeout=timeout)
-    except (asyncio.TimeoutError, aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ServerDisconnectedError, aiohttp.ClientOSError):
+    except (
+        asyncio.TimeoutError, 
+        aiohttp.ClientProxyConnectionError, 
+        aiohttp.ClientHttpProxyError, 
+        aiohttp.ServerDisconnectedError, 
+        aiohttp.ClientOSError, 
+        aiohttp.ClientResponseError
+    ):
         return None
     return response
 
@@ -85,7 +92,7 @@ async def test_proxy(proxy, session, threshold):
 async def decide_proxy(proxy, session, threshold, arr):
     ping_result = await ping_proxy(proxy)
     if int(ping_result) < 500:
-        test_result = await test_proxy(proxy, session, threshold, )
+        test_result = await test_proxy(proxy, session, threshold)
         if test_result:
             arr.append(proxy)
 
