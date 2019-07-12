@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import aiosqlite
 
@@ -6,18 +7,26 @@ import sqlite3
 import json
 from datetime import datetime
 
-from .settings import *
-from .proxy import *
+from .settings import MAX_CACHE_AGE, SQLITE_PATH
+from .proxy import fetch_proxy
 
 
 async def check_existing_query(db, url):
     """ Checks local SQLite3 DB to see if requested URL is stored.
         If a table isn't found, one is created.
-        TODO: Add a timer setting when re-cache needs to occur.
+        If a query is found, checks max cache age in settings to see if it should be returned.
     """
     sql = f"SELECT * FROM query_cache WHERE query = '{url}'"
     cursor = await db.execute(sql)
-    return await cursor.fetchone()
+    query = await cursor.fetchone()
+    if query:
+        query_date = datetime.strptime(query[1], "%Y-%m-%d %H:%M:%S.%f")
+        if ((datetime.now() - query_date).days < MAX_CACHE_AGE):
+            return await query
+        else:
+            return None
+    else:
+        return None
 
 
 async def store_response(db, url, response):
@@ -46,10 +55,13 @@ async def get_url(url, session, arr, db, proxy=None):
 
 async def fetch_urls(urls: [], proxies=None):
     """ Check if URL is cached first via check_existing_query(),
-        If none is found, fetch then store response.
+        If none is found, fetch then store response.ipyt
         Otherwise, return cached response.
     """
     if not os.path.isfile(SQLITE_PATH):
+        """ Check if SQLite3 database exists already.
+            If not, create one and create the relevant table.
+        """
         cur = sqlite3.connect(SQLITE_PATH).cursor()
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
     async with aiosqlite.connect(SQLITE_PATH) as db:

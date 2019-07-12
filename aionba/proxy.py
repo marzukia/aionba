@@ -34,7 +34,7 @@ async def fetch_proxies():
 async def ping_proxy(proxy):
     """ Function to ping the proxy and return ms in an integer. """
     proxy = proxy.split(":")[0]
-    regex = "(time=\d+.ms+)"
+    regex = r"(time=\d+.ms+)"
     cmd = f"ping -c 1 {proxy}"
     ping = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     stdout, stderr = await ping.communicate()
@@ -56,12 +56,16 @@ def suppress_ssl_exception_report():
     """
     loop = asyncio.get_event_loop()
     old_handler = loop.get_exception_handler()
-    old_handler_fn = lambda _loop, ctx: loop.default_exception_handler(ctx)
+
+    def old_handler_fn(loop, ctx):
+        loop.default_exception_handler(ctx)
+
     def ignore_exc(_loop, ctx):
         exc = ctx.get('exception')
         if isinstance(exc, ssl.SSLError):
             return
         old_handler_fn(loop, ctx)
+
     loop.set_exception_handler(ignore_exc)
     try:
         yield
@@ -77,7 +81,14 @@ async def test_proxy(proxy, session, threshold):
     try:
         with suppress_ssl_exception_report():
             response = await session.get('http://yahoo.com', proxy=proxy, timeout=timeout)
-    except (asyncio.TimeoutError, aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ServerDisconnectedError, aiohttp.ClientOSError):
+    except (
+        asyncio.TimeoutError,
+        aiohttp.ClientProxyConnectionError,
+        aiohttp.ClientHttpProxyError,
+        aiohttp.ServerDisconnectedError,
+        aiohttp.ClientOSError,
+        aiohttp.ClientResponseError
+    ):
         return None
     return response
 
@@ -85,7 +96,7 @@ async def test_proxy(proxy, session, threshold):
 async def decide_proxy(proxy, session, threshold, arr):
     ping_result = await ping_proxy(proxy)
     if int(ping_result) < 500:
-        test_result = await test_proxy(proxy, session, threshold, )
+        test_result = await test_proxy(proxy, session, threshold)
         if test_result:
             arr.append(proxy)
 
@@ -99,6 +110,15 @@ async def check_proxies(proxies, threshold):
         return arr
 
 
+async def get_clean_proxies(threshold):
+    assert (type(threshold) is int) or (type(threshold is float)), f"Invalid threshold type {type(threshold)}"
+    proxies = await fetch_proxies()
+    assert type(proxies) is list, "A list of proxies was not returned."
+    clean_proxies = await check_proxies(proxies, threshold)
+    assert len(clean_proxies) > 0, "List of clean proxies was less than one."
+    return clean_proxies
+
+
 def fetch_proxy(proxies):
     """ Fetch a random proxy """
-    return "http://" + proxies[random.randint(0, len(proxies) -1)]
+    return "http://" + proxies[random.randint(0, len(proxies) - 1)]
