@@ -14,14 +14,14 @@ from .proxy import fetch_proxy
 async def check_existing_query(db, url):
     """ Checks local SQLite3 DB to see if requested URL is stored.
         If a table isn't found, one is created.
-        TODO: Add a timer setting when re-cache needs to occur.
+        If a query is found, checks max cache age in settings to see if it should be returned.
     """
     sql = f"SELECT * FROM query_cache WHERE query = '{url}'"
     cursor = await db.execute(sql)
     query = await cursor.fetchone()
     if query:
         query_date = datetime.strptime(query[1], "%Y-%m-%d %H:%M:%S.%f")
-        if ((datetime.now() - query_date).days > MAX_CACHE_AGE):
+        if ((datetime.now() - query_date).days < MAX_CACHE_AGE):
             return await query
         else:
             return None
