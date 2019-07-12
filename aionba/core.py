@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import aiosqlite
 
@@ -6,8 +7,8 @@ import sqlite3
 import json
 from datetime import datetime
 
-from .settings import *
-from .proxy import *
+from .settings import MAX_CACHE_AGE, SQLITE_PATH
+from .proxy import fetch_proxy
 
 
 async def check_existing_query(db, url):
@@ -17,7 +18,15 @@ async def check_existing_query(db, url):
     """
     sql = f"SELECT * FROM query_cache WHERE query = '{url}'"
     cursor = await db.execute(sql)
-    return await cursor.fetchone()
+    query = await cursor.fetchone()
+    if query:
+        query_date = datetime.strptime(query[1], "%Y-%m-%d %H:%M:%S.%f")
+        if ((datetime.now() - query_date).days > MAX_CACHE_AGE):
+            return await query
+        else:
+            return None
+    else:
+        return None
 
 
 async def store_response(db, url, response):
@@ -46,7 +55,7 @@ async def get_url(url, session, arr, db, proxy=None):
 
 async def fetch_urls(urls: [], proxies=None):
     """ Check if URL is cached first via check_existing_query(),
-        If none is found, fetch then store response.
+        If none is found, fetch then store response.ipyt
         Otherwise, return cached response.
     """
     if not os.path.isfile(SQLITE_PATH):
