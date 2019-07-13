@@ -22,7 +22,7 @@ async def check_existing_query(db, url):
     if query:
         query_date = datetime.strptime(query[1], "%Y-%m-%d %H:%M:%S.%f")
         if ((datetime.now() - query_date).days < MAX_CACHE_AGE):
-            return await query
+            return query
         else:
             return None
     else:
@@ -34,18 +34,26 @@ async def store_response(db, url, response):
     payload = {
         "query": url,
         "date": datetime.now(),
-        "response": response
+        "response": response.replace("'", "''")
     }
-    payload = ",".join(f"'{i}'" for i in payload.values())
-    sql = f"INSERT INTO query_cache(query, date, response) VALUES({payload})"
+    sql = f"INSERT INTO query_cache(query, date, response) VALUES('{payload['query']}', '{payload['date']}', '{payload['response']}')"
     await db.execute(sql)
     await db.commit()
 
 
 async def get_url(url, session, arr, db, proxy=None):
+    """ Gets URL with a random proxy if one has been passed, else None is used.
+        TODO: Need to add rotating user agent probably.
+    """
     query = await check_existing_query(db, url)
+    headers = {
+        "host": "stats.nba.com",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+        "connection": "keep-alive",
+        "user-agent": "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:67.0) Gecko/20100101 Firefox/67.0",
+    }
     if not query:
-        response = await session.get(url, proxy=proxy)
+        response = await session.get(url, proxy=proxy, headers=headers)
         response = await response.json()
         await store_response(db, url, json.dumps(response))
         return response
@@ -53,11 +61,13 @@ async def get_url(url, session, arr, db, proxy=None):
         return json.loads(query[-1])
 
 
-async def fetch_urls(urls: [], proxies=None):
+async def fetch_urls(urls, proxies=None):
     """ Check if URL is cached first via check_existing_query(),
         If none is found, fetch then store response.ipyt
         Otherwise, return cached response.
     """
+    if type(urls) is not list:
+        urls = [urls]
     if not os.path.isfile(SQLITE_PATH):
         """ Check if SQLite3 database exists already.
             If not, create one and create the relevant table.
@@ -66,6 +76,7 @@ async def fetch_urls(urls: [], proxies=None):
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
     async with aiosqlite.connect(SQLITE_PATH) as db:
         async with aiohttp.ClientSession() as session:
+            assert type(urls) is list, "Input urls are not a list"
             proxy = None
             arr = []
             if proxy:
