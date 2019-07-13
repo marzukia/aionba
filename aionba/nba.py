@@ -18,7 +18,7 @@ async def get_current_players():
     return df
 
 
-async def get_common_player_info(player_ids):
+async def get_common_player_info(player_ids, proxies=None):
     if type(player_ids) is not list:
         player_ids = [player_ids]
     endpoint = "commonplayerinfo"
@@ -29,7 +29,10 @@ async def get_common_player_info(player_ids):
         }
         url = construct_url(endpoint, params)
         urls.append(url)
-    response = await fetch_urls(urls)
+    if proxies:
+        response = await fetch_urls(urls, proxies=proxies)
+    else:
+        response = await fetch_urls(urls)
     player_arr = []
     for result in response:
         result = result["resultSets"][0]
