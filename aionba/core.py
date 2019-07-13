@@ -6,6 +6,7 @@ import os
 import sqlite3
 import json
 from datetime import datetime
+from urllib.parse import urlencode
 
 from .settings import MAX_CACHE_AGE, SQLITE_PATH
 from .proxy import fetch_proxy
@@ -86,9 +87,12 @@ async def fetch_urls(urls, proxies=None):
             return response
 
 
-def construct_url(endpoint):
+def construct_url(endpoint, params=None):
     """ Construct URL based on endpoint name.
         https://github.com/seemethere/nba_py/wiki/stats.nba.com-Endpoint-Documentation
         Documentation states https://stat.nba.com/stats/<endpoint>/?<params>
     """
-    return f"https://stats.nba.com/stats/{endpoint}"
+    if params:
+        params = urlencode(params)
+    url = f"https://stats.nba.com/stats/{endpoint}?{params}"
+    return url
