@@ -57,12 +57,13 @@ async def get_url(url, session, arr, db, proxy=None):
         response = await session.get(url, proxy=proxy, headers=headers)
         response = await response.json()
         await store_response(db, url, json.dumps(response))
+        await asyncio.sleep(2)
         return response
     else:
         return json.loads(query[-1])
 
 
-async def fetch_urls(urls, proxies=None):
+async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
     """ Check if URL is cached first via check_existing_query(),
         If none is found, fetch then store response.ipyt
         Otherwise, return cached response.
@@ -75,16 +76,26 @@ async def fetch_urls(urls, proxies=None):
         """
         cur = sqlite3.connect(SQLITE_PATH).cursor()
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
+    chunk_size = 10
+    if len(urls) > chunk_size:
+        len_arr = int(len(urls) / chunk_size)
+    chunks = [urls[i:i + len_arr] for i in range(0, len(urls), len_arr)]
     async with aiosqlite.connect(SQLITE_PATH) as db:
         async with aiohttp.ClientSession() as session:
             assert type(urls) is list, "Input urls are not a list"
             proxy = None
             arr = []
-            if proxy:
-                response = await asyncio.gather(*[get_url(i, session, arr, db, proxy=fetch_proxy(proxies)) for i in urls])
-            else:
-                response = await asyncio.gather(*[get_url(i, session, arr, db) for i in urls])
-            return response
+            for chunk in chunks:
+                print(chunk)
+                if proxy:
+                    response = await asyncio.gather(*[get_url(i, session, arr, db, proxy=fetch_proxy(proxies)) for i in chunk])
+                else:
+                    response = await asyncio.gather(*[get_url(i, session, arr, db) for i in chunk])
+                print(response)
+                responses += response
+                print(responses)
+                asyncio.sleep(3)
+        return responses
 
 
 def construct_url(endpoint, params=None):
@@ -96,3 +107,17 @@ def construct_url(endpoint, params=None):
         params = urlencode(params)
     url = f"https://stats.nba.com/stats/{endpoint}?{params}"
     return url
+
+
+'''
+urls = [...]
+tasks = set()
+while urls:
+     url = urls.pop()
+     if len(tasks) > 10:
+         finished, tasks = await asyncio.wait(tasks,
+             return_when=asyncio.FIRST_COMPLETED)
+     task = asyncio.create_task(session.get(url))
+     tasks.add(task)
+await asyncio.wait(tasks) #remaining
+'''

@@ -1,6 +1,7 @@
 import pandas as pd
 
 from aionba.core import construct_url, fetch_urls
+from aionba.proxy import fetch_proxy
 
 
 async def get_current_players():
@@ -30,7 +31,7 @@ async def get_common_player_info(player_ids, proxies=None):
         url = construct_url(endpoint, params)
         urls.append(url)
     if proxies:
-        response = await fetch_urls(urls, proxies=proxies)
+        response = await fetch_urls(urls, proxies=fetch_proxy(proxies))
     else:
         response = await fetch_urls(urls)
     player_arr = []
