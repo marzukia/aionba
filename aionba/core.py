@@ -78,15 +78,16 @@ async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
     chunk_size = 10
     if len(urls) > chunk_size:
-        len_arr = int(len(urls) / chunk_size)
-    chunks = [urls[i:i + len_arr] for i in range(0, len(urls), len_arr)]
+        chunks = [urls[i:i + chunk_size] for i in range(0, len(urls), chunk_size)]
+    else:
+        chunks = [urls]
     async with aiosqlite.connect(SQLITE_PATH) as db:
         async with aiohttp.ClientSession() as session:
             assert type(urls) is list, "Input urls are not a list"
             proxy = None
             arr = []
             for chunk in chunks:
-                print(chunk)
+                print(len(chunk))
                 if proxy:
                     response = await asyncio.gather(*[get_url(i, session, arr, db, proxy=fetch_proxy(proxies)) for i in chunk])
                 else:
@@ -94,7 +95,7 @@ async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
                 print(response)
                 responses += response
                 print(responses)
-                asyncio.sleep(3)
+                await asyncio.sleep(3)
         return responses
 
 
