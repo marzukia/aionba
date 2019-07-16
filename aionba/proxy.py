@@ -116,8 +116,3 @@ async def get_clean_proxies(threshold):
     clean_proxies = await check_proxies(proxies, threshold)
     assert len(clean_proxies) > 0, "List of clean proxies was less than one."
     return clean_proxies
-
-
-def fetch_proxy(proxies, i):
-    """ Fetch a random proxy """
-    return "http://" + proxies[i]

@@ -10,7 +10,6 @@ from datetime import datetime
 from urllib.parse import urlencode
 
 from .settings import MAX_CACHE_AGE, SQLITE_PATH
-from .proxy import fetch_proxy
 
 
 async def check_existing_query(db, url):
@@ -47,7 +46,7 @@ async def store_response(db, url, response):
     await db.commit()
 
 
-async def get_url(url, session, arr, db, proxy=None, errors=[]):
+async def get_url(url, session, db, proxy=None, errors=[]):
     """ Gets URL with a random proxy if one has been passed, else None is used.
         TODO: Need to add rotating user agent probably.
     """
@@ -62,6 +61,9 @@ async def get_url(url, session, arr, db, proxy=None, errors=[]):
     if not query:
         try:
             async with timeout(5):
+                print(url)
+                print(proxy)
+                print(headers)
                 response = await session.get(url, proxy=proxy, headers=headers)
                 response = await response.json()
                 await store_response(db, url, json.dumps(response))
@@ -72,6 +74,20 @@ async def get_url(url, session, arr, db, proxy=None, errors=[]):
             errors.append((url, proxy))
     else:
         return json.loads(query[-1])
+
+
+def pop_urls(urls, n):
+    if n > len(urls):
+        n = len(urls)
+    return [urls.pop() for _ in range(0, n)]
+
+
+async def proxy_check_gather(session, db, errors, urls, proxies=None):
+    if proxies:
+        response = await asyncio.gather(*[get_url(j, session, db, proxy="http://" + proxies[i], errors=errors) for i, j in enumerate(urls)])
+    else:
+        response = await asyncio.gather(*[get_url(i, session, db, errors=errors) for i in urls])
+    return response
 
 
 async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
@@ -87,48 +103,33 @@ async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
         """
         cur = sqlite3.connect(SQLITE_PATH).cursor()
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
-    if proxies:
-        chunk_size = len(proxies)
-    else:
-        chunk_size = 3
-    if len(urls) > chunk_size:
-        chunks = [urls[i:i + chunk_size] for i in range(0, len(urls), chunk_size)]
-    else:
-        chunks = [urls]
     async with aiosqlite.connect(SQLITE_PATH) as db:
         async with aiohttp.ClientSession() as session:
             assert type(urls) is list, "Input urls are not a list"
-            proxy = None
-            arr = []
-            errors = []
-            for i, chunk in enumerate(chunks):
-                print(f"Processing chunk {i + 1} out of {len(chunks)}... chunk size {len(chunk)}")
-                if proxy:
-                    response = await asyncio.gather(*[get_url(j, session, arr, db, proxy=fetch_proxy(proxies, i), errors=errors) for i, j in enumerate(chunk)])
+            while len(urls) > 0:
+                errors = []
+                if not proxies:
+                    # Default chnk size set if no proxies are passed through.
+                    # TODO: Need to confirm optimal size here to avoid throttling.
+                    chunk_size = 5
                 else:
-                    response = await asyncio.gather(*[get_url(i, session, arr, db, errors=errors) for i in chunk])
-                response = [i for i in response if i is not None]
-                print(f"Received {len(response)} responses")
-                if len(response) == len(chunk):
-                    print("Sleeping for 5 seconds.")
-                    await asyncio.sleep(5)
-                else:
-                    sleep_duration = (len(chunk) - len(response)) * 5
-                    print(f"{len(response)} responses != chunk size of {len(chunk)}... slowing down")
-                    print(f"Sleeping for {sleep_duration} seconds.")
-                    await asyncio.sleep(sleep_duration)
+                    chunk_size = len(proxies)
+                urls_chunk = pop_urls(urls, chunk_size)
+                response = await proxy_check_gather(session, db, errors, urls_chunk, proxies)
                 responses += response
-            if len(errors) > 0:
-                print(f"{len(errors)} errors occured. Re-running those...")
-                err_urls = [i[0] for i in errors]
-                try:
-                    err_proxies = set([i[1] for i in errors])
-                    print(f"{len(proxies)} removed from proxies list.")
-                    proxies = [i for i in proxies if i not in err_proxies]
-                    await fetch_urls(err_urls, proxies=proxies, responses=responses)
-                except TypeError:
-                    await fetch_urls(err_urls)
+                if len(errors) > 0:
+                    print(f"{len(errors)} occured due to failing proxies, retrying those urls...")
+                    print("Sleeping for 5 seconds before retrying.")
+                    await asyncio.sleep(5)
+                    error_urls = []
+                    for url, proxy in errors:
+                        if proxies:
+                            proxies.remove(proxy.split("http://")[-1])
+                        error_urls.append(url)
+                    response = await proxy_check_gather(session, db, errors, urls_chunk, proxies)
         responses = [i for i in responses if i is not None]
+        print(f"{len(urls_chunk)} chunks processed, sleeping for 5 seconds.")
+        await asyncio.sleep(5)
         return responses
 
 
