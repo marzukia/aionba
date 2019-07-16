@@ -1,10 +1,9 @@
 import pandas as pd
 
 from aionba.core import construct_url, fetch_urls
-from aionba.proxy import fetch_proxy
 
 
-async def get_current_players():
+async def get_current_players(proxies=None):
     endpoint = "commonallplayers"
     params = {
         "LeagueID": "00",
@@ -12,7 +11,10 @@ async def get_current_players():
         "IsOnlyCurrentSeason": "1"
     }
     url = construct_url(endpoint, params)
-    response = await fetch_urls(url)
+    if proxies:
+        response = await fetch_urls(url, proxies=proxies)
+    else:
+        response = await fetch_urls(url)
     data = response[0]["resultSets"][0]["rowSet"]
     headers = response[0]["resultSets"][0]["headers"]
     df = pd.DataFrame(data, columns=headers)
@@ -31,7 +33,7 @@ async def get_common_player_info(player_ids, proxies=None):
         url = construct_url(endpoint, params)
         urls.append(url)
     if proxies:
-        response = await fetch_urls(urls, proxies=fetch_proxy(proxies))
+        response = await fetch_urls(urls, proxies=proxies)
     else:
         response = await fetch_urls(urls)
     player_arr = []
@@ -39,5 +41,5 @@ async def get_common_player_info(player_ids, proxies=None):
         result = result["resultSets"][0]
         result_dict = {k: v for k, v in zip(result["headers"], result["rowSet"][0])}
         player_arr.append(result_dict)
-    df = pd.DataFrame(player_arr)
+    df = pd.DataFrame(player_arr).drop_duplicates("PERSON_ID", keep="last")
     return df

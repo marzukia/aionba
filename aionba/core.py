@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 import aiosqlite
+from async_timeout import timeout
 
 import os
 import sqlite3
@@ -17,8 +18,12 @@ async def check_existing_query(db, url):
         If a table isn't found, one is created.
         If a query is found, checks max cache age in settings to see if it should be returned.
     """
-    sql = f"SELECT * FROM query_cache WHERE query = '{url}'"
-    cursor = await db.execute(sql)
+    try:
+        sql = f"SELECT * FROM query_cache WHERE query = '{url}'"
+        cursor = await db.execute(sql)
+    except Exception as e:
+        print(sql)
+        raise e
     query = await cursor.fetchone()
     if query:
         query_date = datetime.strptime(query[1], "%Y-%m-%d %H:%M:%S.%f")
@@ -42,10 +47,11 @@ async def store_response(db, url, response):
     await db.commit()
 
 
-async def get_url(url, session, arr, db, proxy=None):
+async def get_url(url, session, arr, db, proxy=None, errors=[]):
     """ Gets URL with a random proxy if one has been passed, else None is used.
         TODO: Need to add rotating user agent probably.
     """
+    response = None
     query = await check_existing_query(db, url)
     headers = {
         "host": "stats.nba.com",
@@ -54,11 +60,16 @@ async def get_url(url, session, arr, db, proxy=None):
         "user-agent": "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:67.0) Gecko/20100101 Firefox/67.0",
     }
     if not query:
-        response = await session.get(url, proxy=proxy, headers=headers)
-        response = await response.json()
-        await store_response(db, url, json.dumps(response))
-        await asyncio.sleep(2)
-        return response
+        try:
+            async with timeout(5):
+                response = await session.get(url, proxy=proxy, headers=headers)
+                response = await response.json()
+                await store_response(db, url, json.dumps(response))
+                return response
+        except (asyncio.TimeoutError, TimeoutError):
+            pass
+        if response is None:
+            errors.append((url, proxy))
     else:
         return json.loads(query[-1])
 
@@ -76,7 +87,10 @@ async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
         """
         cur = sqlite3.connect(SQLITE_PATH).cursor()
         cur.execute("CREATE TABLE query_cache(query VARCHAR, date DATETIME, response VARCHAR);")
-    chunk_size = 10
+    if proxies:
+        chunk_size = len(proxies)
+    else:
+        chunk_size = 3
     if len(urls) > chunk_size:
         chunks = [urls[i:i + chunk_size] for i in range(0, len(urls), chunk_size)]
     else:
@@ -86,16 +100,35 @@ async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
             assert type(urls) is list, "Input urls are not a list"
             proxy = None
             arr = []
-            for chunk in chunks:
-                print(len(chunk))
+            errors = []
+            for i, chunk in enumerate(chunks):
+                print(f"Processing chunk {i + 1} out of {len(chunks)}... chunk size {len(chunk)}")
                 if proxy:
-                    response = await asyncio.gather(*[get_url(i, session, arr, db, proxy=fetch_proxy(proxies)) for i in chunk])
+                    response = await asyncio.gather(*[get_url(j, session, arr, db, proxy=fetch_proxy(proxies, i), errors=errors) for i, j in enumerate(chunk)])
                 else:
-                    response = await asyncio.gather(*[get_url(i, session, arr, db) for i in chunk])
-                print(response)
+                    response = await asyncio.gather(*[get_url(i, session, arr, db, errors=errors) for i in chunk])
+                response = [i for i in response if i is not None]
+                print(f"Received {len(response)} responses")
+                if len(response) == len(chunk):
+                    print("Sleeping for 5 seconds.")
+                    await asyncio.sleep(5)
+                else:
+                    sleep_duration = (len(chunk) - len(response)) * 5
+                    print(f"{len(response)} responses != chunk size of {len(chunk)}... slowing down")
+                    print(f"Sleeping for {sleep_duration} seconds.")
+                    await asyncio.sleep(sleep_duration)
                 responses += response
-                print(responses)
-                await asyncio.sleep(3)
+            if len(errors) > 0:
+                print(f"{len(errors)} errors occured. Re-running those...")
+                err_urls = [i[0] for i in errors]
+                try:
+                    err_proxies = set([i[1] for i in errors])
+                    print(f"{len(proxies)} removed from proxies list.")
+                    proxies = [i for i in proxies if i not in err_proxies]
+                    await fetch_urls(err_urls, proxies=proxies, responses=responses)
+                except TypeError:
+                    await fetch_urls(err_urls)
+        responses = [i for i in responses if i is not None]
         return responses
 
 
@@ -108,17 +141,3 @@ def construct_url(endpoint, params=None):
         params = urlencode(params)
     url = f"https://stats.nba.com/stats/{endpoint}?{params}"
     return url
-
-
-'''
-urls = [...]
-tasks = set()
-while urls:
-     url = urls.pop()
-     if len(tasks) > 10:
-         finished, tasks = await asyncio.wait(tasks,
-             return_when=asyncio.FIRST_COMPLETED)
-     task = asyncio.create_task(session.get(url))
-     tasks.add(task)
-await asyncio.wait(tasks) #remaining
-'''

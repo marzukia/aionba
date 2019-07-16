@@ -1,7 +1,6 @@
 import asyncio
 import aiohttp
 
-import random
 import re
 import ssl
 import contextlib
@@ -119,6 +118,6 @@ async def get_clean_proxies(threshold):
     return clean_proxies
 
 
-def fetch_proxy(proxies):
+def fetch_proxy(proxies, i):
     """ Fetch a random proxy """
-    return "http://" + proxies[random.randint(0, len(proxies) - 1)]
+    return "http://" + proxies[i]
