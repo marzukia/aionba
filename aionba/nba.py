@@ -4,12 +4,15 @@ from collections import defaultdict
 from aionba.core import construct_url, fetch_urls
 
 
-async def get_current_players(proxies=None):
+async def get_players(proxies=None):
+    """ Return back dataframe with a dataframe of players.
+        Pass through '1' if you want only current players.
+    """
     endpoint = "commonallplayers"
     params = {
         "LeagueID": "00",
         "Season": "2018-19",
-        "IsOnlyCurrentSeason": "1"
+        "IsOnlyCurrentSeason": "0"
     }
     url = construct_url(endpoint, params)
     if proxies:
@@ -17,7 +20,7 @@ async def get_current_players(proxies=None):
     else:
         response = await fetch_urls(url)
     data = response[0]["resultSets"][0]["rowSet"]
-    headers = response[0]["resultSets"][0]["headers"]
+    headers = [i.lower() for i in response[0]["resultSets"][0]["headers"]]
     df = pd.DataFrame(data, columns=headers)
     return df
 
@@ -43,6 +46,7 @@ async def get_common_player_info(player_ids, proxies=None):
         result_dict = {k: v for k, v in zip(result["headers"], result["rowSet"][0])}
         player_arr.append(result_dict)
     df = pd.DataFrame(player_arr).drop_duplicates("PERSON_ID", keep="last")
+    df.columns = [i.lower() for i in df.columns]
     return df
 
 
@@ -66,7 +70,7 @@ async def get_player_career_stats(player_ids, proxies=None):
     headers = {}
     for player in response:
         for category in player['resultSets']:
-            headers[category['name']] = category['headers']
+            headers[category['name']] = [i.lower() for i in category['headers']]
             for row in category['rowSet']:
                 if row is not []:
                     data[category['name']].append(row)
