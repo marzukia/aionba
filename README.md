@@ -22,6 +22,11 @@ Retrieves common player info from any player ID
 
 Usage: `await aionba.nba.get_common_player_info([player_ids])` returns Pandas DataFrame.
 
+##### Get player career statistics
+Retrieves player career statistics, incl college etc.
+
+Usage: `await aionba.nba.get_player_career_stats([player_ids])` returns a dictionary of Pandas DataFrames
+
 ### Proxy
 __**This currently does not work as intended**__
 
