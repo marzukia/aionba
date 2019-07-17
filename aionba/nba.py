@@ -11,6 +11,7 @@ async def get_current_players(proxies=None):
         "IsOnlyCurrentSeason": "1"
     }
     url = construct_url(endpoint, params)
+    # url = "https://jsonplaceholder.typicode.com/todos/1"
     if proxies:
         response = await fetch_urls(url, proxies=proxies)
     else:

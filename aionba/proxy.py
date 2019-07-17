@@ -4,6 +4,7 @@ import aiohttp
 import re
 import ssl
 import contextlib
+from datetime import datetime
 from lxml import html
 
 
@@ -79,7 +80,9 @@ async def test_proxy(proxy, session, threshold):
     timeout = aiohttp.ClientTimeout(total=threshold)
     try:
         with suppress_ssl_exception_report():
-            response = await session.get('http://yahoo.com', proxy=proxy, timeout=timeout)
+            response = await session.get('https://stats.nba.com/stats/commonallplayers?LeagueID=00&Season=2018-19&IsOnlyCurrentSeason=1', proxy=proxy, timeout=timeout)
+            if response.status == 200:
+                return response
     except (
         asyncio.TimeoutError,
         aiohttp.ClientProxyConnectionError,
@@ -89,7 +92,6 @@ async def test_proxy(proxy, session, threshold):
         aiohttp.ClientResponseError
     ):
         return None
-    return response
 
 
 async def decide_proxy(proxy, session, threshold, arr):

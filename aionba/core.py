@@ -61,17 +61,21 @@ async def get_url(url, session, db, proxy=None, errors=[]):
     if not query:
         try:
             async with timeout(5):
-                print(url)
-                print(proxy)
-                print(headers)
-                response = await session.get(url, proxy=proxy, headers=headers)
+                proxy_str = None
+                if proxy:
+                    proxy_str = "http://" + proxy
+                response = await session.get(url, proxy=proxy_str, headers=headers)
+                status = response.status
+                print(status, url)
                 response = await response.json()
                 await store_response(db, url, json.dumps(response))
-                return response
+                if status != 200 or response == []:
+                    print("ERROR:", status, url)
+                    errors.append((url, proxy))
+                elif status == 200 and response != []:
+                    return response
         except (asyncio.TimeoutError, TimeoutError):
             pass
-        if response is None:
-            errors.append((url, proxy))
     else:
         return json.loads(query[-1])
 
@@ -84,9 +88,9 @@ def pop_urls(urls, n):
 
 async def proxy_check_gather(session, db, errors, urls, proxies=None):
     if proxies:
-        response = await asyncio.gather(*[get_url(j, session, db, proxy="http://" + proxies[i], errors=errors) for i, j in enumerate(urls)])
+        response = await asyncio.gather(*[get_url(url=j, session=session, db=db, proxy=proxies[i], errors=errors) for i, j in enumerate(urls)])
     else:
-        response = await asyncio.gather(*[get_url(i, session, db, errors=errors) for i in urls])
+        response = await asyncio.gather(*[get_url(url=i, session=session, db=db, proxy=None, errors=errors) for i in urls])
     return response
 
 
@@ -111,25 +115,26 @@ async def fetch_urls(urls, proxies=None, len_arr=1, responses=[]):
                 if not proxies:
                     # Default chnk size set if no proxies are passed through.
                     # TODO: Need to confirm optimal size here to avoid throttling.
-                    chunk_size = 5
+                    chunk_size = 10
                 else:
                     chunk_size = len(proxies)
                 urls_chunk = pop_urls(urls, chunk_size)
-                response = await proxy_check_gather(session, db, errors, urls_chunk, proxies)
+                response = await proxy_check_gather(session=session, db=db, errors=errors, urls=urls_chunk, proxies=proxies)
                 responses += response
                 if len(errors) > 0:
-                    print(f"{len(errors)} occured due to failing proxies, retrying those urls...")
+                    print(errors)
+                    print(f"{len(errors)} occured, retrying those urls...")
                     print("Sleeping for 5 seconds before retrying.")
                     await asyncio.sleep(5)
                     error_urls = []
                     for url, proxy in errors:
                         if proxies:
-                            proxies.remove(proxy.split("http://")[-1])
+                            proxies.remove(proxy)
                         error_urls.append(url)
-                    response = await proxy_check_gather(session, db, errors, urls_chunk, proxies)
-        responses = [i for i in responses if i is not None]
-        print(f"{len(urls_chunk)} chunks processed, sleeping for 5 seconds.")
-        await asyncio.sleep(5)
+                    responses += await fetch_urls(urls=error_urls, proxies=proxies)
+                responses = [i for i in responses if i is not None]
+                print(f"{len(response)} of {len(urls_chunk)} urls processed, sleeping for 5 seconds.")
+                await asyncio.sleep(5)
         return responses
 
 
