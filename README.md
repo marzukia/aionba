@@ -1,15 +1,11 @@
 # aionba
 Asynchronous stats.nba.com API wrapper, utilising `asyncio`, `aiohttp`, and `aiosqlite` libraries for the backend.
-Caching functionality built into request calls to reduce overhead on API, proxy and header rotation to avoid bans.
+Caching functionality built into request calls to reduce overhead on API.
 This library aims to allow the user to consistently update their NBA stats database.
 
 Shout out to this [project](https://github.com/seemethere/nba_py/wiki/stats.nba.com-Endpoint-Documentation) for documenting the API well.
 
 ## Usage
-### Proxy
-`aionba` builds in a proxy list builder, this allows you to *hopefully* avoid being detected and blocked.
-In order to fetch a list of proxies, use `await aionba.proxy.get_clean_proxies(threshold=3)`.
-
 ### Core
 The key function which this wrapper uses is `await aionba.core.fetch_urls([a, b, c], proxies=proxy_arr)` which will asynchronously retrieve those values.
 
@@ -25,3 +21,8 @@ Usage: `await aionba.nba.get_current_players()` returns Pandas DataFrame.
 Retrieves common player info from any player ID
 
 Usage: `await aionba.nba.get_common_player_info([player_ids])` returns Pandas DataFrame.
+
+### Proxy
+__This currently does not work as intended__
+`aionba` builds in a proxy list builder, this allows you to *hopefully* avoid being detected and blocked.
+In order to fetch a list of proxies, use `await aionba.proxy.get_clean_proxies(threshold=3)`.
