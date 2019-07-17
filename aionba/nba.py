@@ -1,4 +1,5 @@
 import pandas as pd
+from collections import defaultdict
 
 from aionba.core import construct_url, fetch_urls
 
@@ -11,7 +12,6 @@ async def get_current_players(proxies=None):
         "IsOnlyCurrentSeason": "1"
     }
     url = construct_url(endpoint, params)
-    # url = "https://jsonplaceholder.typicode.com/todos/1"
     if proxies:
         response = await fetch_urls(url, proxies=proxies)
     else:
@@ -44,3 +44,33 @@ async def get_common_player_info(player_ids, proxies=None):
         player_arr.append(result_dict)
     df = pd.DataFrame(player_arr).drop_duplicates("PERSON_ID", keep="last")
     return df
+
+
+async def get_player_career_stats(player_ids, proxies=None):
+    if type(player_ids) is not list:
+        player_ids = [player_ids]
+    endpoint = "playercareerstats"
+    urls = []
+    for player_id in player_ids:
+        params = {
+            "PlayerID": player_id,
+            "PerMode": "Totals",
+        }
+        url = construct_url(endpoint, params)
+        urls.append(url)
+    if proxies:
+        response = await fetch_urls(urls, proxies=proxies)
+    else:
+        response = await fetch_urls(urls)
+    data = defaultdict(list)
+    headers = {}
+    for player in response:
+        for category in player['resultSets']:
+            headers[category['name']] = category['headers']
+            for row in category['rowSet']:
+                if row is not []:
+                    data[category['name']].append(row)
+    dfs = {}
+    for key, value in data.items():
+        dfs[key] = pd.DataFrame(value, columns=headers[key])
+    return dfs
