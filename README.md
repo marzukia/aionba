@@ -23,6 +23,7 @@ Retrieves common player info from any player ID
 Usage: `await aionba.nba.get_common_player_info([player_ids])` returns Pandas DataFrame.
 
 ### Proxy
-__This currently does not work as intended__
+__**This currently does not work as intended**__
+
 `aionba` builds in a proxy list builder, this allows you to *hopefully* avoid being detected and blocked.
 In order to fetch a list of proxies, use `await aionba.proxy.get_clean_proxies(threshold=3)`.
